@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 
 from linker import Settings, load_settings
-from linker.ask import answer_question, follow_up
+from linker.ask import answer_activity, answer_question, follow_up
 from linker.claude import ClaudeError, check_claude_auth
 from linker.github import GitHubError, connect
 from linker.jira import JiraClient, JiraError
@@ -101,6 +101,31 @@ def ask_one(question: str, ticket: str | None, settings: Settings, client: JiraC
     return 0
 
 
+def activity_one(args: argparse.Namespace, settings: Settings, client: JiraClient) -> int:
+    import calendar
+
+    try:
+        year, month = (int(x) for x in args.month.split("-"))
+        last = calendar.monthrange(year, month)[1]
+    except ValueError:
+        print(f"--month must look like 2026-10, not '{args.month}'.", file=sys.stderr)
+        return 2
+    who = "I" if args.person.lower() == "me" else args.person
+    question = args.ask or f"What did {who} work on in {calendar.month_name[month]} {year}? Write it up for a monthly check-in."
+    try:
+        result = answer_activity(question, args.person, f"{year}-{month:02d}-01", f"{year}-{month:02d}-{last}",
+                                 settings, client, say=Progress(), model=args.model)
+    except (JiraError, ClaudeError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    print()
+    print(result.markdown)
+    print(f"Saved: {result.path}", file=sys.stderr)
+    if args.open and sys.platform == "win32":
+        os.startfile(result.path)  # noqa: S606
+    return 0
+
+
 def main() -> int:
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -122,6 +147,9 @@ def main() -> int:
     parser.add_argument("--no-commits", action="store_true", help="don't scan commits")
     parser.add_argument("--follow-up", metavar="REPORT", type=Path,
                         help="with --ask: continue the conversation saved with this answer (.md)")
+    parser.add_argument("--month", metavar="YYYY-MM",
+                        help="summarise a person's Jira activity for that month (check-in style)")
+    parser.add_argument("--person", default="me", help="with --month: whose activity (default: you)")
     args = parser.parse_args()
 
     settings = load_settings()
@@ -133,6 +161,8 @@ def main() -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
+    if args.month and not args.follow_up:
+        return activity_one(args, settings, client)
     if args.ask and args.follow_up:
         try:
             result = follow_up(args.follow_up, args.ask, settings, say=Progress(), client=client,

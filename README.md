@@ -59,6 +59,31 @@ Manager) first, then `GITHUB_TOKEN`. If you have cloned an org repo over HTTPS, 
 setting up. Otherwise use **Help > Sign in to GitHub**. `GITHUB_ORG` / `GITHUB_TOKEN` left blank
 fall back to the Code Scanner's `.env`. Without GitHub, questions are answered from Jira alone.
 
+### Activity questions (check-ins, status updates)
+
+Ask about what someone did over a period and Ask Claude switches to activity mode by itself.
+For example: *"What did I work on in October? Write it up for my monthly check-in"* or *"What
+did Sam Lee ship last sprint?"*. The planning call returns the person ("me" or a name) and the
+date range. A date range in the future moves back a year, and the report says it did.
+
+`linker/activity.py` then:
+
+1. finds every field that holds a person on your Jira site (Assignee, **Developer**, QA Engineer,
+   Reviewer, Co-Assignee, ...);
+2. searches tickets where the person holds any of those roles and that changed in the window,
+   plus tickets whose status the person changed in the window (`status CHANGED BY`). The second
+   search is how peer reviews and release help show up;
+3. reads each ticket's full history and comments and keeps what happened in the window: their
+   roles, status changes, their comments and edits, story points, sprints and labels.
+
+Claude writes it up in these sections: shipped, finished but released later, still in flight,
+peer reviews, decisions, new work, and things worth flagging. The flags include credit gaps
+(Developer is the person but Assignee is someone else) and missing story points. GitHub isn't
+searched. Follow-ups such as *"make it two sentences for my boss"* reuse the saved digest and run
+no new searches. Reports are saved as `reports/activity-YYYY-MM-*.md`.
+
+From the command line: `python jcl.py --month 2026-10 [--person "Sam Lee"] [--ask "custom question"]`.
+
 ### Ticket checks (shared context, no wasted tokens)
 
 Every **Find context** run saves what it gathered (the ticket, related tickets, documents and

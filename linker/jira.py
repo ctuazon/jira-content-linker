@@ -290,6 +290,87 @@ class JiraClient:
         except ValueError:
             return []
 
+    # --- raw access for person/date ("activity") questions ---------------------
+
+    def account(self, person: str) -> tuple[str, str]:
+        """(accountId, displayName) for "me" or a name/email. Raises JiraError if not found."""
+        if person.strip().lower() in ("", "me", "myself", "i", "currentuser()"):
+            response = self.get("/rest/api/3/myself")
+            if response is None or not response.ok:
+                raise JiraError("Could not look up your Jira account.")
+            data = response.json() or {}
+            return str(data.get("accountId") or ""), str(data.get("displayName") or "")
+        response = self.get("/rest/api/3/user/search", params={"query": person, "maxResults": 10})
+        users = [u for u in (response.json() if response is not None and response.ok else []) or []
+                 if u.get("accountType") == "atlassian" and u.get("active", True)]
+        if not users:
+            raise JiraError(f"No active Jira user matches '{person}'.")
+        exact = [u for u in users if str(u.get("displayName") or "").lower() == person.strip().lower()]
+        user = (exact or users)[0]
+        return str(user.get("accountId") or ""), str(user.get("displayName") or "")
+
+    def fields(self) -> list[dict[str, Any]]:
+        if getattr(self, "_fields", None) is None:
+            response = self.get("/rest/api/3/field")
+            self._fields = (response.json() or []) if response is not None and response.ok else []
+        return self._fields
+
+    def person_fields(self) -> list[dict[str, Any]]:
+        """Searchable fields that hold a person or people (Assignee, Developer, QA Engineer, ...)."""
+        out = []
+        for f in self.fields():
+            schema = f.get("schema") or {}
+            if (schema.get("type") == "user" or schema.get("items") == "user") and f.get("searchable", True):
+                out.append(f)
+        return out
+
+    def search_raw(self, jql: str, *, fields: list[str] | None = None, expand: str = "",
+                   max_total: int = 300) -> tuple[list[dict[str, Any]], str]:
+        """Every matching issue's raw JSON (paged), and an error message ('' when fine)."""
+        issues: list[dict[str, Any]] = []
+        token = None
+        while len(issues) < max_total:
+            body: dict[str, Any] = {"jql": jql, "maxResults": min(100, max_total - len(issues)),
+                                    "fields": fields or ["*all"]}
+            if expand:
+                body["expand"] = expand
+            if token:
+                body["nextPageToken"] = token
+            response = self.post("/rest/api/3/search/jql", body)
+            if response is None:
+                return issues, f"Could not reach {self.base_url}."
+            if not response.ok:
+                try:
+                    errors = (response.json() or {}).get("errorMessages") or []
+                except ValueError:
+                    errors = []
+                return issues, "; ".join(map(str, errors)) or f"HTTP {response.status_code}"
+            data = response.json() or {}
+            issues += data.get("issues") or []
+            token = data.get("nextPageToken")
+            if not token or data.get("isLast"):
+                break
+        return issues, ""
+
+    def _paged(self, path: str, list_key: str, limit: int = 1000) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        while len(out) < limit:
+            response = self.get(path, params={"startAt": len(out), "maxResults": 100})
+            if response is None or not response.ok:
+                break
+            data = response.json() or {}
+            page = data.get(list_key) or []
+            out += page
+            if not page or len(out) >= int(data.get("total") or 0):
+                break
+        return out
+
+    def changelog(self, key: str) -> list[dict[str, Any]]:
+        return self._paged(f"/rest/api/3/issue/{key}/changelog", "values")
+
+    def comments(self, key: str) -> list[dict[str, Any]]:
+        return self._paged(f"/rest/api/3/issue/{key}/comment", "comments")
+
     def remote_links(self, key: str) -> list[Document]:
         response = self.get(f"/rest/api/3/issue/{key}/remotelink")
         if response is None or not response.ok:
