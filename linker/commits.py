@@ -1,6 +1,7 @@
 """Find commits in the repos a ticket is about.
 
 Which repos ("Auto"):
+  * sites the ticket names (SITE_REPOS, e.g. equip/truck -> marketplace-ssr), first
   * the Jira project's mapping (PROJECT_REPOS, e.g. ASEARCH -> marketplace, marketplace-search-api)
   * any repo from REPO_CHOICES the ticket names (summary, labels, components, description)
   * repos of the PRs on the ticket's Jira development panel
@@ -26,13 +27,25 @@ MAX_COMMITS = 20
 AUTO = "Auto (from ticket)"
 
 
+def site_repos(text: str, settings: Settings) -> list[str]:
+    """Repos for the sites `text` names (SITE_REPOS), e.g. "Equipment Trader" -> marketplace-ssr."""
+    text = text.lower()
+    found: list[str] = []
+    for terms, repos in settings.site_repos:
+        if any(re.search(rf"(?<![\w-]){re.escape(term)}(?![\w-])", text) for term in terms):
+            found += repos
+    return list(dict.fromkeys(found))
+
+
 def guess_repos(target: Issue | None, settings: Settings, pr_urls: list[str]) -> list[str]:
     """Short repo names the ticket is about, most likely first."""
     found: list[str] = []
     if target is not None:
-        found += settings.project_repos.get(target.project.upper(), [])
         haystack = " ".join([target.summary, " ".join(target.labels), " ".join(target.components),
                              target.description[:3000]]).lower()
+        # Site-specific repos first: equip/truck tickets now live in marketplace-ssr.
+        found += site_repos(haystack, settings)
+        found += settings.project_repos.get(target.project.upper(), [])
         # Longest names first so "marketplace-ssr" wins over "marketplace" inside it.
         for name in sorted(settings.repo_choices, key=len, reverse=True):
             if re.search(rf"(?<![\w-]){re.escape(name.lower())}(?![\w-])", haystack):

@@ -99,7 +99,15 @@ def _strings(data: dict[str, Any], name: str, limit: int) -> list[str]:
     return [str(x).strip() for x in data.get(name) or [] if str(x).strip()][:limit]
 
 
-def build_ask_plan_prompt(question: str, target: Issue | None) -> str:
+def _site_repo_hint(settings: Settings | None) -> str:
+    if settings is None or not settings.site_repos:
+        return ""
+    lines = [f"  {' / '.join(terms)} -> {', '.join(repos)}" for terms, repos in settings.site_repos]
+    return ("  Sites map to repos as follows; when the question or ticket is about one of these sites,\n"
+            "  include its repo:\n" + "\n".join(lines) + "\n")
+
+
+def build_ask_plan_prompt(question: str, target: Issue | None, settings: Settings | None = None) -> str:
     ticket = f"<ticket>\n{describe_target(target, comments=4)}\n</ticket>" if target else "(no ticket given)"
     return f"""An engineer has a question about their company's engineering history. Plan the
 searches that will find the evidence: Jira tickets, Confluence pages and GitHub pull requests.
@@ -114,7 +122,7 @@ Return:
 - confluence_terms: up to 4 phrases likely to appear in design docs or runbooks.
 - repos: GitHub repository names the question is about, as the engineer would write them
   (e.g. "marketplace", "aim-myt"). Empty if none are implied.
-- github_queries: up to 4 GitHub pull-request search phrases (words that would appear in PR
+{_site_repo_hint(settings)}- github_queries: up to 4 GitHub pull-request search phrases (words that would appear in PR
   titles or descriptions). Do not include qualifiers like org: or is:pr.
 - activity: when the question asks what a person did, worked on, shipped or reviewed over a
   period (monthly check-in, status update, performance review, "last sprint"), set person to
@@ -768,7 +776,7 @@ def answer_question(
 
     say(f"planning searches with {settings.claude_plan_model}")
     try:
-        data = ask_json(build_ask_plan_prompt(question, target), ASK_PLAN_SCHEMA, settings,
+        data = ask_json(build_ask_plan_prompt(question, target, settings), ASK_PLAN_SCHEMA, settings,
                         model=settings.claude_plan_model, effort="low", on_status=say)
     except ClaudeError as exc:
         say(f"planning failed, searching the question's words instead ({exc})")

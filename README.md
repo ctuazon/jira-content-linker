@@ -106,6 +106,8 @@ With **Scan commits** on (both **Find context** and **Ask Claude**), the app als
 history of the repo the ticket is about. Pick the repo in the **Repo** list, or leave it on
 **Auto (from ticket)**:
 
+- the repos of any site the ticket names, from `SITE_REPOS`, tried first (Equipment Trader / equip
+  and Commercial Truck Trader / truck → marketplace-ssr, since those sites moved to SSR)
 - the Jira project's repos from `PROJECT_REPOS` (ASEARCH → marketplace and marketplace-search-api)
 - any repo from `REPO_CHOICES` that the ticket names, e.g. `[AIM-MYT]` in the summary
 - repos of the PRs on the ticket's development panel

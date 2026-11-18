@@ -188,7 +188,7 @@ class LinkerApp(tk.Tk):
         self.repo_combo = ttk.Combobox(options, textvariable=self.repo_var, width=26,
                                        values=[AUTO] + load_settings().repo_choices)
         self.repo_combo.pack(side=tk.RIGHT)
-        tip(self.repo_combo, "Repo whose commits are scanned. Auto: ASEARCH tickets use marketplace and "
+        tip(self.repo_combo, "Repo whose commits are scanned. Auto: equip/truck tickets use marketplace-ssr; ASEARCH tickets use marketplace and "
                              "marketplace-search-api; otherwise repos the ticket names or links PRs from. "
                              "You can type any repo name, or several separated by commas.")
         ttk.Label(options, text="Repo").pack(side=tk.RIGHT, padx=(14, 6))

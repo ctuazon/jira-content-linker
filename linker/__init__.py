@@ -23,6 +23,11 @@ DEFAULT_CODE_SCANNER_DIR = ROOT.parent / "Github Code Scanner"
 _PEER_REVIEW_KEYRING_SERVICE = "peer-review-app"
 DEFAULT_REPO_CHOICES = "marketplace,marketplace-search-api,aim-myt,marketplace-ssr,lib-importer-tasks-php"
 DEFAULT_PROJECT_REPOS = "ASEARCH:marketplace,marketplace-search-api"
+# Equipment Trader and Commercial Truck Trader are served by marketplace-ssr.
+DEFAULT_SITE_REPOS = (
+    "equip|equipment|equipment trader|equipmenttrader|truck|trucks|commercial truck trader"
+    "|commercialtrucktrader|ctt:marketplace-ssr"
+)
 
 
 def _read_dotenv(path: Path) -> dict[str, str]:
@@ -76,6 +81,18 @@ def _parse_project_repos(value: str) -> dict[str, list[str]]:
     return mapping
 
 
+def _parse_site_repos(value: str) -> list[tuple[list[str], list[str]]]:
+    """'equip|truck:marketplace-ssr;boat:other' -> [(terms, repos)]. Terms are matched as whole
+    words in ticket (or question) text."""
+    rules: list[tuple[list[str], list[str]]] = []
+    for part in value.split(";"):
+        terms, _, repos = part.rpartition(":")
+        terms_list = [t.strip().lower() for t in terms.split("|") if t.strip()]
+        if terms_list and repos.strip():
+            rules.append((terms_list, _parse_list(repos)))
+    return rules
+
+
 def _peer_review_secret(name: str) -> str:
     try:
         import keyring
@@ -105,6 +122,7 @@ class Settings:
     github_api_url: str = "https://api.github.com"
     repo_choices: list[str] = field(default_factory=list)
     project_repos: dict[str, list[str]] = field(default_factory=dict)
+    site_repos: list[tuple[list[str], list[str]]] = field(default_factory=list)
     context_max_age_hours: float = 24.0
     jira_source: str = ""
 
@@ -173,6 +191,7 @@ def load_settings() -> Settings:
         github_api_url=github("GITHUB_API_URL", "https://api.github.com").rstrip("/"),
         repo_choices=_parse_list(env("REPO_CHOICES", DEFAULT_REPO_CHOICES)),
         project_repos=_parse_project_repos(env("PROJECT_REPOS", DEFAULT_PROJECT_REPOS)),
+        site_repos=_parse_site_repos(env("SITE_REPOS", DEFAULT_SITE_REPOS)),
         context_max_age_hours=_parse_float(env("CONTEXT_MAX_AGE_HOURS"), 24.0),
         jira_source=", ".join(sorted({s for s in (src_url, src_token) if s})),
     )
